@@ -68,6 +68,7 @@ void free_singularities(singularity_array_t *arr)
 double complex *compute_H(double complex *s_grid, singularity_array_t zeros_arr, singularity_array_t poles_arr, uint16_t height, uint16_t width, double complex *H)
 {
 	uint32_t length = height * width;
+	double max_val = 0.0;
 
 	if (H == NULL)
 	{
@@ -113,7 +114,57 @@ double complex *compute_H(double complex *s_grid, singularity_array_t zeros_arr,
 		}
 
 		H[i] = num / (den + 1e-15); // Avoid division by zero
+
+		double abs_val = cabs(H[i]);
+		if (abs_val > max_val)
+			max_val = abs_val;
+	}
+
+	// Normalize H
+	if (max_val > 0.0)
+	{
+		for (uint32_t i = 0; i < height * width; i++)
+		{
+			H[i] /= max_val;
+		}
 	}
 
 	return H;
+}
+
+uint32_t *H_g_img(double complex *H, uint16_t height, uint16_t width, uint32_t *img)
+{
+	if (img != NULL)
+	{
+		img = malloc(sizeof(uint32_t) * height * width);
+		if (!img)
+			return NULL;
+	}
+	for (uint32_t i = 0; i < height * width; i++)
+	{
+		uint32_t c = cabs(H[i]) * 255u;
+
+		img[i] = (255<<24) | (c << 16) | (c << 8) | c; // ARGB format
+	}
+
+	return img;
+}
+
+uint32_t *H_c1_img(double complex *H, uint16_t height, uint16_t width, uint32_t *img)
+{
+	if (img != NULL)
+	{
+		img = malloc(sizeof(uint32_t) * height * width);
+		if (!img)
+			return NULL;
+	}
+	for (uint32_t i = 0; i < height * width; i++)
+	{
+		uint32_t r = (uint32_t)(creal(H[i]) * 255u) << 16;
+		uint32_t b = (uint32_t)(cimag(H[i]) * 255u);
+
+		img[i] = (255<<24) | r | 0ul | b; // ARGB format
+	}
+
+	return img;
 }

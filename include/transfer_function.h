@@ -29,5 +29,7 @@ void create_singularities(singularity_array_t *arr, size_t initial_capacity);
 void add_singularity(singularity_array_t *arr, singularity_t s);
 void remove_singularity(singularity_array_t *arr, size_t index);
 void free_singularities(singularity_array_t *arr);
+double complex *compute_H(double complex *s_grid, singularity_array_t zeros_arr, singularity_array_t poles_arr, uint16_t height, uint16_t width, double complex *H);
+
 
 #endif
