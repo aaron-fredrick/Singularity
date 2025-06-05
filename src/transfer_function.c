@@ -70,6 +70,8 @@ double complex *compute_H(double complex *s_grid, singularity_array_t zeros_arr,
 	uint32_t length = height * width;
 	double max_val = 0.0;
 
+	printf("Computing H for %u points..., height %u, width %u\n", length, height, width);
+
 	if (H == NULL)
 	{
 		H = malloc(sizeof(double complex) * length);
@@ -132,22 +134,14 @@ double complex *compute_H(double complex *s_grid, singularity_array_t zeros_arr,
 	return H;
 }
 
-uint32_t *H_g_img(double complex *H, uint16_t height, uint16_t width, uint32_t *img)
+void H_g_img(double complex *H, img_t H_img)
 {
-	if (img != NULL)
-	{
-		img = malloc(sizeof(uint32_t) * height * width);
-		if (!img)
-			return NULL;
-	}
-	for (uint32_t i = 0; i < height * width; i++)
+	for (uint32_t i = 0; i < H_img.height * H_img.width; i++)
 	{
 		uint32_t c = cabs(H[i]) * 255u;
 
-		img[i] = (255<<24) | (c << 16) | (c << 8) | c; // ARGB format
+		(H_img.data)[i] = (255<<24) | (c << 16) | (c << 8) | c; // ARGB format
 	}
-
-	return img;
 }
 
 uint32_t *H_c1_img(double complex *H, uint16_t height, uint16_t width, uint32_t *img)

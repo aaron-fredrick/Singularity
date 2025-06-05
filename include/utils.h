@@ -5,4 +5,6 @@
 #include <stdlib.h>
 #include <stdint.h>
 
+int gcd(int a, int b);
+
 #endif
