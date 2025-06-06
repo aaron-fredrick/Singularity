@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <math.h>
 #include <complex.h>
 #include "img_utils.h"
 
@@ -16,7 +17,7 @@ typedef struct
     double complex val;
     uint8_t e;
     double m;
-    double complex c;
+    double c;
 } singularity_t;
 
 typedef struct

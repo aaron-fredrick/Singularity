@@ -10,3 +10,8 @@ int gcd(int a, int b)
 	}
 	return a;
 }
+
+double random_uniform(double min, double max)
+{
+	return min + (rand() / (RAND_MAX + 1.0)) * (max - min);
+}

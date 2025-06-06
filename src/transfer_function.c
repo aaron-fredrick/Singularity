@@ -40,7 +40,7 @@ void add_singularity(singularity_array_t *arr, singularity_t s)
 {
 	if (arr->size == arr->capacity)
 	{
-		arr->capacity = arr->capacity ? arr->capacity * 2 : 4;
+		arr->capacity += 2;
 		arr->data = realloc(arr->data, arr->capacity * sizeof(singularity_t));
 	}
 	arr->data[arr->size++] = s;
@@ -69,8 +69,6 @@ double complex *compute_H(double complex *s_grid, singularity_array_t zeros_arr,
 {
 	uint32_t length = height * width;
 	double max_val = 0.0;
-
-	printf("Computing H for %u points..., height %u, width %u\n", length, height, width);
 
 	if (H == NULL)
 	{
@@ -117,6 +115,8 @@ double complex *compute_H(double complex *s_grid, singularity_array_t zeros_arr,
 
 		H[i] = num / (den + 1e-15); // Avoid division by zero
 
+		printf("H[%u] = %f + %fi\n", i, creal(H[i]), cimag(H[i]));
+
 		double abs_val = cabs(H[i]);
 		if (abs_val > max_val)
 			max_val = abs_val;
@@ -144,9 +144,9 @@ void H_g_img(double complex *H, img_t H_img)
 	}
 }
 
-uint32_t *H_c1_img(double complex *H, uint16_t height, uint16_t width, uint32_t *img)
+/* uint32_t *H_c1_img(double complex *H, uint16_t height, uint16_t width, uint32_t *img)
 {
-	if (img != NULL)
+	if (img == NULL)
 	{
 		img = malloc(sizeof(uint32_t) * height * width);
 		if (!img)
@@ -161,4 +161,4 @@ uint32_t *H_c1_img(double complex *H, uint16_t height, uint16_t width, uint32_t 
 	}
 
 	return img;
-}
+} */

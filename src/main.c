@@ -3,9 +3,13 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <complex.h>
+#include <time.h>
 #include "transfer_function.h"
 #include "img_utils.h"
 #include "utils.h"
+
+#define N_ZEROS 3
+#define N_POLES 3
 
 int main(int argc, char **argv)
 {
@@ -45,9 +49,12 @@ int main(int argc, char **argv)
 	y_range[0] = -ratio_h * range_factor;
 	y_range[1] = ratio_h * range_factor;
 
-	s = generate_s_grid(screen_height, screen_width, y_range, x_range);
+	uint16_t grid_width = screen_width / 4; // 1/4 of the screen width
+	uint16_t grid_height = screen_height / 4; // 1/4 of the screen height
 
-	create_img(x_range[1] - x_range[0], y_range[1] - y_range[0], &H_img);
+	s = generate_s_grid(grid_height, grid_width, y_range, x_range);
+
+	create_img(grid_width, grid_height, &H_img);
 
 	SDL_Window *window = SDL_CreateWindow("SINGULARITY",
 										  SDL_WINDOWPOS_CENTERED,
@@ -79,10 +86,38 @@ int main(int argc, char **argv)
 		SDL_TEXTUREACCESS_STREAMING,
 		H_img.width,
 		H_img.height);
+		
+	srand((unsigned int)time(NULL));
+
+	create_singularities(&zeros, N_ZEROS);
+	create_singularities(&poles, N_POLES);
+
+	for (size_t i = 0; i < N_ZEROS; i++)
+	{
+		singularity_t z = {0};
+		z.val = random_uniform(x_range[0], x_range[1]) + random_uniform(y_range[0], y_range[1]) * I; // Example zeros at imaginary axis
+		z.e = (uint8_t)random_uniform(1, 5); // Order of the zero
+		z.m = random_uniform(0, 5); // Magnitude
+		z.c = random_uniform(0, 5); // Constant term
+		add_singularity(&zeros, z);
+
+		printf("Zero %zu: val = %.2f + %.2fi, e = %u, m = %.2f, c = %.2f\n", i, creal(z.val), cimag(z.val), z.e, z.m, z.c);
+	}
+
+	for (size_t i = 0; i < N_POLES; i++)
+	{
+		singularity_t p = {0};
+		p.val = random_uniform(x_range[0], x_range[1]) + random_uniform(y_range[0], y_range[1]) * I; // Example poles at imaginary axis
+		p.e = (uint8_t)random_uniform(1, 5); // Order of the pole
+		p.m = random_uniform(0, 5); // Magnitude
+		p.c = random_uniform(0, 5); // Constant term
+		add_singularity(&poles, p);
+
+		printf("Pole %zu: val = %.2f + %.2fi, e = %u, m = %.2f, c = %.2f\n", i, creal(p.val), cimag(p.val), p.e, p.m, p.c);
+	}
 
 	int running = 1;
 	SDL_Event e;
-
 	while (running)
 	{
 		while (SDL_PollEvent(&e))
@@ -93,9 +128,8 @@ int main(int argc, char **argv)
 			}
 		}
 
-		H = compute_H(s, zeros, poles, y_range[1] - y_range[0], x_range[1] - x_range[0], H);
+		H = compute_H(s, zeros, poles, grid_height, grid_width, H);
 
-		printf("H computed, generating image...\n");
 
 		H_g_img(H, H_img);
 
@@ -104,7 +138,24 @@ int main(int argc, char **argv)
 		SDL_RenderClear(renderer);					   // Clear the screen
 		SDL_RenderCopy(renderer, H_texture, NULL, NULL); // Stretch to fullscreen
 		SDL_RenderPresent(renderer);				   // Show it
+
+		SDL_Delay(200); // ~60 FPS
 	}
+
+	free_singularities(&zeros);
+	free_singularities(&poles);
+
+	free(s);
+	free(H);
+
+	free(H_img.data);
+
+	SDL_DestroyTexture(H_texture);
+	SDL_DestroyRenderer(renderer);
+	SDL_DestroyWindow(window);
+	SDL_Quit();
+
+	printf("Exiting program...\n");
 
 	return 0;
 }
