@@ -68,7 +68,6 @@ void free_singularities(singularity_array_t *arr)
 double complex *compute_H(double complex *s_grid, singularity_array_t zeros_arr, singularity_array_t poles_arr, uint16_t height, uint16_t width, double complex *H)
 {
 	uint32_t length = height * width;
-	double max_val = 0.0;
 
 	if (H == NULL)
 	{
@@ -114,51 +113,252 @@ double complex *compute_H(double complex *s_grid, singularity_array_t zeros_arr,
 		}
 
 		H[i] = num / (den + 1e-15); // Avoid division by zero
-
-		printf("H[%u] = %f + %fi\n", i, creal(H[i]), cimag(H[i]));
-
-		double abs_val = cabs(H[i]);
-		if (abs_val > max_val)
-			max_val = abs_val;
-	}
-
-	// Normalize H
-	if (max_val > 0.0)
-	{
-		for (uint32_t i = 0; i < height * width; i++)
-		{
-			H[i] /= max_val;
-		}
 	}
 
 	return H;
 }
 
-void H_g_img(double complex *H, img_t H_img)
+double complex *normalize_H_complex(const double complex *H, size_t size, double complex *normalized)
+{
+	if (normalized == NULL)
+	{
+		normalized = (double complex *)malloc(sizeof(double complex) * size);
+		if (!normalized)
+			return NULL;
+	}
+
+	double max_mag = DBL_MIN;
+
+	// First pass: find max magnitude
+	for (size_t i = 0; i < size; ++i)
+	{
+		double mag = cabs(H[i]);
+		if (mag > max_mag)
+			max_mag = mag;
+	}
+
+	// Second pass: normalize preserving angle
+	double denom = max_mag + 1e-6;
+	for (size_t i = 0; i < size; ++i)
+	{
+		double mag = cabs(H[i]);
+		double phase = carg(H[i]);
+		double scaled_mag = mag / denom;
+
+		// Clamp (optional)
+		if (scaled_mag > 1.0)
+			scaled_mag = 1.0;
+
+		normalized[i] = scaled_mag * cexp(I * phase);
+	}
+
+	return normalized;
+}
+
+// Compare function for qsort
+int compare_double(const void *a, const void *b)
+{
+	double diff = *(double *)a - *(double *)b;
+	return (diff > 0) - (diff < 0);
+}
+
+// Normalize using log1p(magnitude) and 99th percentile scaling
+double complex *normalize_H_log_complex(const double complex *H, size_t size, double complex *normalized)
+{
+	if (!H || size == 0)
+		return NULL;
+
+	double *log_mag = (double *)malloc(size * sizeof(double));
+	if (!log_mag)
+		return NULL;
+
+	// Compute log1p of magnitude
+	for (size_t i = 0; i < size; ++i)
+	{
+		log_mag[i] = log1p(cabs(H[i]));
+	}
+
+	// Copy for sorting
+	double *sorted = (double *)malloc(size * sizeof(double));
+	if (!sorted)
+	{
+		free(log_mag);
+		return NULL;
+	}
+	memcpy(sorted, log_mag, size * sizeof(double));
+	qsort(sorted, size, sizeof(double), compare_double);
+
+	// Approximate 99th percentile
+	size_t idx = (size_t)(0.99 * size);
+	if (idx >= size)
+		idx = size - 1;
+	double max_val = sorted[idx];
+
+	free(sorted);
+
+	// Allocate result if needed
+	if (normalized == NULL)
+	{
+		normalized = (double complex *)malloc(size * sizeof(double complex));
+		if (!normalized)
+		{
+			free(log_mag);
+			return NULL;
+		}
+	}
+
+	double denom = max_val + 1e-6;
+	for (size_t i = 0; i < size; ++i)
+	{
+		double mag = log_mag[i] / denom;
+		if (mag > 1.0)
+			mag = 1.0;
+		if (mag < 0.0)
+			mag = 0.0;
+
+		// Preserve original phase
+		double phase = carg(H[i]);
+		normalized[i] = mag * cexp(I * phase);
+	}
+
+	free(log_mag);
+	return normalized;
+}
+
+// Clamp helper
+static inline uint8_t clamp(float x)
+{
+	return (uint8_t)(x < 0 ? 0 : (x > 255 ? 255 : x));
+}
+
+// Convert HSV (uint8 format) to RGB (uint8 format)
+void hsv_to_rgb_uint8(uint8_t H, uint8_t S, uint8_t V, uint8_t *R, uint8_t *G, uint8_t *B)
+{
+	float h = H * 2.0f; // Scale H from [0,179] to [0,360]
+	float s = S / 255.0f;
+	float v = V / 255.0f;
+
+	float c = v * s;
+	float x = c * (1 - fabsf(fmodf(h / 60.0f, 2) - 1));
+	float m = v - c;
+
+	float r = 0, g = 0, b = 0;
+
+	if (h < 60)
+	{
+		r = c;
+		g = x;
+		b = 0;
+	}
+	else if (h < 120)
+	{
+		r = x;
+		g = c;
+		b = 0;
+	}
+	else if (h < 180)
+	{
+		r = 0;
+		g = c;
+		b = x;
+	}
+	else if (h < 240)
+	{
+		r = 0;
+		g = x;
+		b = c;
+	}
+	else if (h < 300)
+	{
+		r = x;
+		g = 0;
+		b = c;
+	}
+	else
+	{
+		r = c;
+		g = 0;
+		b = x;
+	}
+
+	*R = clamp((r + m) * 255.0f);
+	*G = clamp((g + m) * 255.0f);
+	*B = clamp((b + m) * 255.0f);
+}
+
+// grayscale
+void H_g_img(double complex *n_H, img_t H_img)
 {
 	for (uint32_t i = 0; i < H_img.height * H_img.width; i++)
 	{
-		uint32_t c = cabs(H[i]) * 255u;
+		uint32_t c = cabs(n_H[i]) * 255u;
 
-		(H_img.data)[i] = (255<<24) | (c << 16) | (c << 8) | c; // ARGB format
+		(H_img.data)[i] = (255 << 24) | (c << 16) | (c << 8) | c; // ARGB format
 	}
 }
 
-/* uint32_t *H_c1_img(double complex *H, uint16_t height, uint16_t width, uint32_t *img)
+// R and B only
+void H_c1_img(double complex *n_H, img_t H_img)
 {
-	if (img == NULL)
+	for (uint32_t i = 0; i < H_img.height * H_img.width; i++)
 	{
-		img = malloc(sizeof(uint32_t) * height * width);
-		if (!img)
-			return NULL;
+		uint32_t r = (uint32_t)(((creal(n_H[i]) + 1) / 2) * 255u) << 16;
+		uint32_t b = (uint32_t)(((cimag(n_H[i]) + 1) / 2) * 255u);
+
+		(H_img.data)[i] = (255 << 24) | r | b; // ARGB format
 	}
-	for (uint32_t i = 0; i < height * width; i++)
+}
+
+// R and B influenced by abs
+void H_c2_img(double complex *n_H, img_t H_img)
+{
+	for (uint32_t i = 0; i < H_img.height * H_img.width; i++)
 	{
-		uint32_t r = (uint32_t)(creal(H[i]) * 255u) << 16;
-		uint32_t b = (uint32_t)(cimag(H[i]) * 255u);
+		uint32_t r = (uint32_t)(((creal(n_H[i]) + 1) / 2) * cabs(n_H[i]) * 255u) << 16;
+		uint32_t b = (uint32_t)(((cimag(n_H[i]) + 1) / 2) * cabs(n_H[i]) * 255u);
 
-		img[i] = (255<<24) | r | 0ul | b; // ARGB format
+		(H_img.data)[i] = (255 << 24) | r | b; // ARGB format
 	}
+}
 
-	return img;
-} */
+// R, G and B
+void H_c3_img(double complex *n_H, img_t H_img)
+{
+	for (uint32_t i = 0; i < H_img.height * H_img.width; i++)
+	{
+		uint32_t r = (uint32_t)(((creal(n_H[i]) + 1) / 2) * 255u) << 16;
+		uint32_t g = (uint32_t)(cabs(n_H[i]) * 255u) << 8; // Use magnitude for green channel
+		uint32_t b = (uint32_t)(((cimag(n_H[i]) + 1) / 2) * 255u);
+
+		(H_img.data)[i] = (255 << 24) | r | g | b; // ARGB format
+	}
+}
+
+
+// R, G and B influenced by abs
+void H_c4_img(double complex *n_H, img_t H_img)
+{
+	for (uint32_t i = 0; i < H_img.height * H_img.width; i++)
+	{
+		uint32_t r = (uint32_t)(((creal(n_H[i]) + 1) / 2) * cabs(n_H[i]) * 255u) << 16;
+		uint32_t g = (uint32_t)(cabs(n_H[i]) * 255u) << 8; // Use magnitude for green channel
+		uint32_t b = (uint32_t)(((cimag(n_H[i]) + 1) / 2) * cabs(n_H[i]) * 255u);
+
+		(H_img.data)[i] = (255 << 24) | r | g | b; // ARGB format
+	}
+}
+
+// HSV color map
+void H_c5_img(double complex *n_H, img_t H_img)
+{
+	for (uint32_t i = 0; i < H_img.height * H_img.width; i++)
+	{
+		uint8_t h = (uint8_t)(((creal(n_H[i]) + 1) / 2) * (2.f / 3.f) * 255);
+		uint8_t s = (uint8_t)(((cimag(n_H[i]) + 1) / 2) * 255);
+		uint8_t v = (uint8_t)(cabs(n_H[i]) * 255);
+
+		uint8_t r, g, b;
+		hsv_to_rgb_uint8(h, s, v, &r, &g, &b);
+		(H_img.data)[i] = (255 << 24) | (uint32_t)r << 16 | (uint32_t)g << 8 | b; // ARGB format
+	}
+}
