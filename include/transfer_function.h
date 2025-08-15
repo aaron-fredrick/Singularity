@@ -40,6 +40,7 @@ double complex *compute_H(double complex *s_grid, singularity_array_t zeros_arr,
 
 double complex *normalize_H_complex(const double complex *H, size_t size, double complex *normalized);
 double complex *normalize_H_log_complex(const double complex *H, size_t size, double complex *normalized);
+double complex *normalize_H_log_complex_steps(const double complex *H, size_t size, int steps, double complex *normalized);
 
 void H_g_img(double complex *n_H, img_t H_img);
 void H_c1_img(double complex *n_H, img_t H_img);

@@ -225,6 +225,75 @@ double complex *normalize_H_log_complex(const double complex *H, size_t size, do
 	return normalized;
 }
 
+double complex *normalize_H_log_complex_steps(const double complex *H, size_t size, int steps, double complex *normalized)
+{
+	if (!H || size == 0 || steps <= 0)
+		return NULL;
+
+	double *log_mag = (double *)malloc(size * sizeof(double));
+	if (!log_mag)
+		return NULL;
+
+	// Compute log1p of magnitude
+	for (size_t i = 0; i < size; ++i)
+	{
+		log_mag[i] = log1p(cabs(H[i]));
+	}
+
+	// Sort for 99th percentile
+	double *sorted = (double *)malloc(size * sizeof(double));
+	if (!sorted)
+	{
+		free(log_mag);
+		return NULL;
+	}
+	memcpy(sorted, log_mag, size * sizeof(double));
+	qsort(sorted, size, sizeof(double), compare_double);
+
+	size_t idx = (size_t)(0.99 * size);
+	if (idx >= size)
+		idx = size - 1;
+	double max_val = sorted[idx];
+	free(sorted);
+
+	// Allocate output if not provided
+	if (!normalized)
+	{
+		normalized = (double complex *)malloc(size * sizeof(double complex));
+		if (!normalized)
+		{
+			free(log_mag);
+			return NULL;
+		}
+	}
+
+	// Normalize and step
+	double denom = max_val + 1e-6;
+	double step_size = 1.0 / steps;
+
+	for (size_t i = 0; i < size; ++i)
+	{
+		double raw_mag = log_mag[i] / denom;
+
+		// Clamp
+		if (raw_mag > 1.0)
+			raw_mag = 1.0;
+		if (raw_mag < 0.0)
+			raw_mag = 0.0;
+
+		// Snap to nearest step
+		int step_index = (int)(raw_mag * steps + 0.5); // round to nearest step
+		double quantized_mag = step_index * step_size;
+
+		// Reapply original phase
+		double phase = carg(H[i]);
+		normalized[i] = quantized_mag * cexp(I * phase);
+	}
+
+	free(log_mag);
+	return normalized;
+}
+
 // Clamp helper
 static inline uint8_t clamp(float x)
 {
@@ -334,14 +403,13 @@ void H_c3_img(double complex *n_H, img_t H_img)
 	}
 }
 
-
 // R, G and B influenced by abs
 void H_c4_img(double complex *n_H, img_t H_img)
 {
 	for (uint32_t i = 0; i < H_img.height * H_img.width; i++)
 	{
 		uint32_t r = (uint32_t)(((creal(n_H[i]) + 1) / 2) * cabs(n_H[i]) * 255u) << 16;
-		uint32_t g = (uint32_t)(cabs(n_H[i]) * 255u) << 8; // Use magnitude for green channel
+		uint32_t g = (uint32_t)((1 - cabs(n_H[i])) * 255u) << 8; // Use magnitude for green channel
 		uint32_t b = (uint32_t)(((cimag(n_H[i]) + 1) / 2) * cabs(n_H[i]) * 255u);
 
 		(H_img.data)[i] = (255 << 24) | r | g | b; // ARGB format

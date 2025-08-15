@@ -126,7 +126,9 @@ int main(int argc, char **argv)
 	printf("Generated %zu zeros and %zu poles.\n", zeros.size, poles.size);
 
 	int running = 1;
-	int c_map = 0, n_map = 0;
+	int c_map = 0, n_map = 1, steps = 5;
+	int cursor_mode = 0; // 0: normal, 1: move target
+	singularity_t *move_target = NULL;
 	SDL_Event e;
 	while (running)
 	{
@@ -145,8 +147,67 @@ int main(int argc, char **argv)
 			}
 			else if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_BACKSPACE)
 			{
-				n_map = (n_map + 1) % 2; // Cycle through color maps
+				n_map = (n_map + 1) % 3; // Cycle through color maps
 				printf("Normalisation map changed to %d\n", n_map);
+			}
+			else if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_DOWN)
+			{
+				steps--;
+				if (steps < 1)
+					steps = 1; // Ensure steps don't go below 1
+				printf("Decreased steps to %d\n", steps);
+			}
+			else if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_UP)
+			{
+				steps++;
+				if (steps > INT16_MAX)
+					steps = INT16_MAX; // Ensure steps don't go above 10
+				printf("Increased steps to %d\n", steps);
+			}
+			else if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_g)
+			{
+				cursor_mode = cursor_mode == 1 ? 0 : 1;
+			}
+
+			else if (e.type == SDL_MOUSEBUTTONDOWN)
+			{
+				if (e.button.button == SDL_BUTTON_LEFT)
+				{
+					double complex c;
+					uint8_t found = 0;
+					screen_choords_to_complex(e.button.x, e.button.y, &c, x_range, y_range, screen_width, screen_height);
+
+					if (cursor_mode == 1)	
+					{
+						for (size_t i = 0; i < poles.size; i++)
+						{
+							singularity_t p = poles.data[i];
+
+							if (cabs(p.val - c) < 0.1) // Check if close to a pole
+							{
+								move_target = &poles.data[i];
+								printf("Selected pole at (%f, %f)\n", creal(p.val), cimag(p.val));
+								found = 1;
+								break;
+							}
+						}
+
+						if (!found)
+						{
+							for (size_t i = 0; i < zeros.size; i++)
+							{
+								singularity_t z = zeros.data[i];
+
+								if (cabs(z.val - c) < 0.1) // Check if close to a zero
+								{
+									move_target = &zeros.data[i];
+									printf("Selected zero at (%f, %f)\n", creal(z.val), cimag(z.val));
+									break;
+								}
+							}
+						}
+					}
+				}
 			}
 		}
 
@@ -155,11 +216,14 @@ int main(int argc, char **argv)
 		switch (n_map)
 		{
 		case 0:
-			n_H = normalize_H_log_complex(H, grid_height * grid_width, n_H);
+			n_H = normalize_H_complex(H, grid_height * grid_width, n_H);
 			break;
 
 		case 1:
-			n_H = normalize_H_complex(H, grid_height * grid_width, n_H);
+			n_H = normalize_H_log_complex(H, grid_height * grid_width, n_H);
+			break;
+		case 2:
+			n_H = normalize_H_log_complex_steps(H, grid_height * grid_width, steps, n_H);
 			break;
 
 		default:
