@@ -10,6 +10,8 @@
 #include <complex.h>
 #include "img_utils.h"
 
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+
 // for s
 double complex *generate_s_grid(uint16_t height, uint16_t width, double y_range[2], double x_range[2]);
 
@@ -28,6 +30,16 @@ typedef struct
     size_t size;
     size_t capacity;
 } singularity_array_t;
+
+typedef struct
+{
+    float *i;
+    float *r;
+    uint8_t *e;
+    float *m;
+    float *c;
+    size_t count;
+} new_singularity_array_t;
 
 double complex *generate_s_grid(uint16_t height, uint16_t width, double y_range[2], double x_range[2]);
 
