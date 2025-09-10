@@ -167,6 +167,7 @@ int main(int argc, char **argv)
 			else if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_g)
 			{
 				cursor_mode = cursor_mode == 1 ? 0 : 1;
+				printf("Cursor mode changed to %d\n", cursor_mode);
 			}
 
 			else if (e.type == SDL_MOUSEBUTTONDOWN)

@@ -1,6 +1,6 @@
 # Configuration
 CC = gcc
-CFLAGS = -Wall -O2 -Iinclude $(shell sdl2-config --cflags)
+CFLAGS = -Wall -O3 -Iinclude $(shell sdl2-config --cflags)
 LDFLAGS = -lm $(shell sdl2-config --libs)
 
 SRC_DIR = src
