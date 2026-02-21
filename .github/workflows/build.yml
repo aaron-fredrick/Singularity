@@ -1,0 +1,56 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libsdl2-dev build-essential
+        
+    - name: Compile
+      run: make clean && make
+      
+    - name: Check binary
+      run: |
+        if [ ! -f bin/singularity ]; then
+          echo "Binary not found!"
+          exit 1
+        fi
+        echo "Linux build successful."
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up MSYS2
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        install: >-
+          mingw-w64-x86_64-gcc
+          mingw-w64-x86_64-SDL2
+          make
+          
+    - name: Compile
+      shell: msys2 {0}
+      run: make clean && make
+      
+    - name: Check binary
+      shell: msys2 {0}
+      run: |
+        if [ ! -f bin/singularity.exe ]; then
+          echo "Binary not found!"
+          exit 1
+        fi
+        echo "Windows build successful."

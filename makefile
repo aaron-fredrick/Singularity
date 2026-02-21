@@ -1,13 +1,25 @@
 # Configuration
 CC = gcc
-CFLAGS = -Wall -O3 -march=native -std=c11 -Iinclude -I/mingw64/include/SDL2 -D_REENTRANT
-LDFLAGS = -lm -L/mingw64/lib -lmingw32 -lSDL2main -lSDL2
+CFLAGS = -Wall -O3 -march=native -std=c11 -Iinclude -D_REENTRANT
+LDFLAGS = -lm
+
+# OS-specific settings
+ifeq ($(OS),Windows_NT)
+    CFLAGS += -I/mingw64/include/SDL2
+    LDFLAGS += -L/mingw64/lib -lmingw32 -lSDL2main -lSDL2
+    EXE_EXT = .exe
+else
+    # Linux (Ubuntu) / macOS
+    CFLAGS += $(shell sdl2-config --cflags)
+    LDFLAGS += $(shell sdl2-config --libs)
+    EXE_EXT =
+endif
 
 SRC_DIR = src
 BUILD_DIR = build
 BIN_DIR = bin
 EXE_NAME = singularity
-EXE = $(BIN_DIR)/$(EXE_NAME)
+EXE = $(BIN_DIR)/$(EXE_NAME)$(EXE_EXT)
 
 # Get source files and corresponding object files
 SRCS := $(wildcard $(SRC_DIR)/*.c)
@@ -27,10 +39,14 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# Bundle SDL2.dll with executable
+# Bundle SDL2.dll with executable (Windows only)
 bundle-sdl2: all
+ifeq ($(OS),Windows_NT)
 	@echo "Looking for SDL2.dll..."
 	@cp /mingw64/bin/SDL2.dll $(BIN_DIR)/ 2>/dev/null && echo "SDL2.dll copied to $(BIN_DIR)/" || echo "Warning: SDL2.dll not found in /mingw64/bin/"
+else
+	@echo "Library bundling is not required on this OS (use dynamic linking)."
+endif
 
 # Create distribution package
 dist: bundle-sdl2

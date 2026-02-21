@@ -18,7 +18,7 @@
  *   S / F1      Open / close settings panel
  */
 
-#include <SDL2/SDL.h>
+#include <SDL.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
