@@ -1,4 +1,5 @@
 #include "simd_sse.h"
+#include <stdlib.h>
 
 // --- SSE family (128-bit) ---
 static void compute_s4_from_index(
@@ -33,8 +34,7 @@ static void compute_s4_from_index(
 }
 
 // Multiply two complex SIMD numbers: (ar + i ai) * (br + i bi)
-__attribute__((target("sse")))
-static void sse_complex_mul(
+__attribute__((target("sse"))) static void sse_complex_mul(
 	__m128 ar, __m128 ai,
 	__m128 br, __m128 bi,
 	__m128 *out_r, __m128 *out_i)
@@ -46,8 +46,7 @@ static void sse_complex_mul(
 }
 
 // Divide two complex SIMD numbers: (ar + i ai) / (br + i bi)
-__attribute__((target("sse")))
-static void sse_complex_div(
+__attribute__((target("sse"))) static void sse_complex_div(
 	__m128 ar, __m128 ai,
 	__m128 br, __m128 bi,
 	__m128 *out_r, __m128 *out_i)
@@ -69,8 +68,7 @@ static void sse_complex_div(
 }
 
 // Store 1-4 lanes from v into dst
-__attribute__((target("sse")))
-static void sse_store_n_floats(float *dst, __m128 v, int n)
+__attribute__((target("sse"))) static void sse_store_n_floats(float *dst, __m128 v, int n)
 {
 	if (n <= 0 || n > 3)
 		return; // invalid
@@ -97,8 +95,8 @@ __attribute__((target("sse2"))) float **sse2_compute_H(float x_range[2], float y
 		{
 			return NULL;
 		}
-		H[0] = malloc(sizeof(float) * length);
-		H[1] = malloc(sizeof(float) * length);
+		H[0] = (float *)malloc(sizeof(float) * length);
+		H[1] = (float *)malloc(sizeof(float) * length);
 		if (!H[0] || !H[1])
 		{
 			free(H[0]);
@@ -153,15 +151,17 @@ __attribute__((target("sse2"))) float **sse2_compute_H(float x_range[2], float y
 			term_r = res_r;
 			term_i = res_i;
 
-			// (z.m * prod + z.c), with m,c real, (2 regs, total 14)
-			__m128 m_v = _mm_set1_ps(zeros_arr.m[z_i]);
-			__m128 c_v = _mm_set1_ps(zeros_arr.c[z_i]);
+			// (z.m * prod + z.c), with m,c complex
+			__m128 m_r = _mm_set1_ps(zeros_arr.m_r[z_i]);
+			__m128 m_i = _mm_set1_ps(zeros_arr.m_i[z_i]);
+			__m128 c_r = _mm_set1_ps(zeros_arr.c_r[z_i]);
+			__m128 c_i = _mm_set1_ps(zeros_arr.c_i[z_i]);
 
-			term_r = _mm_mul_ps(m_v, term_r);
-			term_i = _mm_mul_ps(m_v, term_i);
+			__m128 tm_r, tm_i;
+			sse_complex_mul(m_r, m_i, term_r, term_i, &tm_r, &tm_i);
 
-			term_r = _mm_add_ps(term_r, c_v);
-			term_i = term_i; // TODO: add c to imaginary part?
+			term_r = _mm_add_ps(tm_r, c_r);
+			term_i = _mm_add_ps(tm_i, c_i);
 
 			// num *= (that), applied per lane (2 regs, total 16)
 			sse_complex_mul(num_r, num_i, term_r, term_i, &num_r, &num_i);
@@ -198,15 +198,17 @@ __attribute__((target("sse2"))) float **sse2_compute_H(float x_range[2], float y
 			term_r = res_r;
 			term_i = res_i;
 
-			// (p.m * prod + p.c), with m,c real, (2 regs, total 14)
-			__m128 m_v = _mm_set1_ps(poles_arr.m[p_i]);
-			__m128 c_v = _mm_set1_ps(poles_arr.c[p_i]);
+			// (p.m * prod + p.c), with m,c complex
+			__m128 m_r = _mm_set1_ps(poles_arr.m_r[p_i]);
+			__m128 m_i = _mm_set1_ps(poles_arr.m_i[p_i]);
+			__m128 c_r = _mm_set1_ps(poles_arr.c_r[p_i]);
+			__m128 c_i = _mm_set1_ps(poles_arr.c_i[p_i]);
 
-			term_r = _mm_mul_ps(m_v, term_r);
-			term_i = _mm_mul_ps(m_v, term_i);
+			__m128 tm_r, tm_i;
+			sse_complex_mul(m_r, m_i, term_r, term_i, &tm_r, &tm_i);
 
-			term_r = _mm_add_ps(term_r, c_v);
-			term_i = term_i; // TODO: add c to imaginary part?
+			term_r = _mm_add_ps(tm_r, c_r);
+			term_i = _mm_add_ps(tm_i, c_i);
 
 			// den *= (that), applied per lane (2 regs, total 16)
 			sse_complex_mul(den_r, den_i, term_r, term_i, &den_r, &den_i);
@@ -236,173 +238,107 @@ __attribute__((target("sse2"))) float **sse2_compute_H(float x_range[2], float y
 	return H;
 }
 
-/*  float **sse2_compute_H(float x_range[2], float y_range[2], new_singularity_array_t zeros_arr, new_singularity_array_t poles_arr, uint16_t height, uint16_t width, float **H)
+__attribute__((target("sse2"))) float **sse_normalize_H(const float **H, size_t size, float **normalized)
 {
-	uint32_t length = height * width;
-
-	float y_start = y_range[0];
-	float y_end = y_range[1];
-	float x_start = x_range[0];
-	float x_end = x_range[1];
-
-	// Calculate the step sizes
-	float dy = (y_end - y_start) / (height - 1);
-	float dx = (x_end - x_start) / (width - 1);
-
-	if (H == NULL)
+	if (normalized == NULL)
 	{
-		H = (float **)malloc(sizeof(float *) * 2);
-		if (!H)
+		normalized = (float **)malloc(sizeof(float *) * 2);
+		if (!normalized)
 		{
 			return NULL;
 		}
-		H[0] = malloc(sizeof(float) * length);
-		H[1] = malloc(sizeof(float) * length);
-		if (!H[0] || !H[1])
+		normalized[0] = malloc(sizeof(float) * size);
+		normalized[1] = malloc(sizeof(float) * size);
+		if (!normalized[0] || !normalized[1])
 		{
-			free(H[0]);
-			free(H[1]);
-			free(H);
+			free(normalized[0]);
+			free(normalized[1]);
+			free(normalized);
 			return NULL;
 		}
 	}
 
-	size_t i = 0;
-	for (float sr = x_start; sr <= x_end; sr += dx)
+	// Step 1: find max magnitude
+	float max_mag = DBL_MIN;
+	size_t i = 0, idx = 4;
+	for (; i + 1 < size;)
 	{
-		for (float si = y_start; si <= y_end; si += dy)
-		{
-			float num_r = 1.0f, num_i = 0.0f, den_r = 1.0f, den_i = 0.0f;
+		// Load 2 complex values (4 floats: re0, im0, re1, im1)
+		__m128 term_r = _mm_loadu_ps(normalized[0] + i);
+		__m128 term_i = _mm_loadu_ps(normalized[1] + i);
 
-			// Zeros
-			for (size_t z_i = 0; z_i < zeros_arr.count; z_i += 4)
-			{
-				// load 4 zeros (2 regs, total 2)
-				__m128 zr_v = _mm_loadu_ps(zeros_arr.r + z_i);
-				__m128 zi_v = _mm_loadu_ps(zeros_arr.i + z_i);
+		// Square: re^2 , im^2
+		__m128 r_sq = _mm_mul_ps(term_r, term_r);
+		__m128 i_sq = _mm_mul_ps(term_i, term_i);
 
-				// term = s - z (2 regs, total 4)
-				__m128 term_r = _mm_set1_ps(sr);   // sr -> term_r
-				__m128 term_i = _mm_set1_ps(si);   // si -> term_i
-				term_r = _mm_sub_ps(term_r, zr_v); // term_r now holds s - z_r
-				term_i = _mm_sub_ps(term_i, zi_v); // term_i now holds s - z_i
+		// re^2 + im^2
+		__m128 mag_sq = _mm_add_ps(r_sq, i_sq);
 
-				// --- do exponentiation per lane (scalar loop) ---
-				float tr[4], ti[4];
-				float pr[4], pi[4];
-				_mm_storeu_ps(tr, term_r);
-				_mm_storeu_ps(ti, term_i);
+		// sqrt
+		__m128 mag = _mm_sqrt_ps(mag_sq);
 
-				for (int lane = 0; lane < 4; lane++)
-				{
-					float r = 1.0f, im = 0.0f;
-					for (int k = 0; k < zeros_arr.e[z_i + lane]; k++)
-					{
-						float tmp_r = r * tr[lane] - im * ti[lane];
-						float tmp_i = r * ti[lane] + im * tr[lane];
-						r = tmp_r;
-						im = tmp_i;
-					}
-					pr[lane] = r;
-					pi[lane] = im;
-				}
+		float buf[4];
+		_mm_storeu_ps(buf, mag);
 
-				term_r = _mm_loadu_ps(pr);
-				term_i = _mm_loadu_ps(pi);
+		if (buf[0] > max_mag)
+			max_mag = buf[0];
+		if (buf[1] > max_mag)
+			max_mag = buf[1];
+		if (buf[2] > max_mag)
+			max_mag = buf[2];
+		if (buf[3] > max_mag)
+			max_mag = buf[3];
 
-				// (z.m * prod + z.c), with m,c real, (2 regs, total 6)
-				__m128 m_v = _mm_loadu_ps(zeros_arr.m + z_i);
-				__m128 c_v = _mm_loadu_ps(zeros_arr.c + z_i);
+		if (idx + i > size)
+			idx = size - i; // adjust for last few elements
 
-				term_r = _mm_mul_ps(m_v, term_r);
-				term_i = _mm_mul_ps(m_v, term_i);
-
-				term_r = _mm_add_ps(term_r, c_v);
-				term_i = term_i;
-
-				// num *= (that), applied per lane
-				float nr[4], ni[4];
-				_mm_storeu_ps(nr, term_r);
-				_mm_storeu_ps(ni, term_i);
-
-				for (int lane = 0; lane < 4; lane++)
-				{
-					float tmp_r = (num_r)*nr[lane] - (num_i)*ni[lane];
-					float tmp_i = (num_r)*ni[lane] + (num_i)*nr[lane];
-					num_r = tmp_r;
-					num_i = tmp_i;
-				}
-			}
-			// TODO: tail of zeros
-
-			// Poles
-			for (size_t p_i = 0; p_i < poles_arr.count; p_i += 4)
-			{
-				// load 4 poles (2 regs, total 2)
-				__m128 pr_v = _mm_loadu_ps(poles_arr.r + p_i);
-				__m128 pi_v = _mm_loadu_ps(poles_arr.i + p_i);
-
-				// term = s - z (2 regs, total 4)
-				__m128 term_r = _mm_set1_ps(sr);   // sr -> term_r
-				__m128 term_i = _mm_set1_ps(si);   // si -> term_i
-				term_r = _mm_sub_ps(term_r, pr_v); // term_r now holds s - p_r
-				term_i = _mm_sub_ps(term_i, pi_v); // term_i now holds s - p_i
-
-				// --- do exponentiation per lane (scalar loop) ---
-				float tr[4], ti[4];
-				float pr[4], pi[4];
-				_mm_storeu_ps(tr, term_r);
-				_mm_storeu_ps(ti, term_i);
-
-				for (int lane = 0; lane < 4; lane++)
-				{
-					float r = 1.0f, im = 0.0f;
-					for (int k = 0; k < poles_arr.e[p_i + lane]; k++)
-					{
-						float tmp_r = r * tr[lane] - im * ti[lane];
-						float tmp_i = r * ti[lane] + im * tr[lane];
-						r = tmp_r;
-						im = tmp_i;
-					}
-					pr[lane] = r;
-					pi[lane] = im;
-				}
-
-				term_r = _mm_loadu_ps(pr);
-				term_i = _mm_loadu_ps(pi);
-
-				// (p.m * prod + p.c), with m,c real, (2 regs, total 6)
-				__m128 m_v = _mm_loadu_ps(poles_arr.m + p_i);
-				__m128 c_v = _mm_loadu_ps(poles_arr.c + p_i);
-
-				term_r = _mm_mul_ps(m_v, term_r);
-				term_i = _mm_mul_ps(m_v, term_i);
-
-				term_r = _mm_add_ps(term_r, c_v);
-				term_i = term_i;
-
-				// den *= (that), applied per lane
-				float dr[4], di[4];
-				_mm_storeu_ps(dr, term_r);
-				_mm_storeu_ps(di, term_i);
-
-				for (int lane = 0; lane < 4; lane++)
-				{
-					float tmp_r = (den_r)*dr[lane] - (den_i)*di[lane];
-					float tmp_i = (den_r)*di[lane] + (den_i)*dr[lane];
-					den_r = tmp_r;
-					den_i = tmp_i;
-				}
-			}
-			// TODO: tail of poles
-
-			i++;
-
-			H[0][i] = num_r / (den_r + 1e-15f); // Avoid division by zero
-			H[1][i] = num_i / (den_i + 1e-15f); // Avoid division by zero
-		}
+		i += idx;
+	}
+	// Tail
+	for (size_t i = 0; i < size; i++)
+	{
+		float mag = sqrtf(H[0][i] * H[0][i] + H[1][i] * H[1][i]);
+		if (mag > max_mag)
+			max_mag = mag;
 	}
 
-	return H;
-} */
+	float denom = max_mag + 1e-6f;
+	__m128 denom_v = _mm_set1_ps(denom);
 
+	// Step 2: normalize magnitudes (preserve complex angle)
+	idx = 4;
+	for (i = 0; i + 1 < size;)
+	{
+		__m128 term_r = _mm_loadu_ps(normalized[0] + i);
+		__m128 term_i = _mm_loadu_ps(normalized[1] + i);
+
+		// Square: re^2 , im^2
+		__m128 r_sq = _mm_mul_ps(term_r, term_r);
+		__m128 i_sq = _mm_mul_ps(term_i, term_i);
+
+		// re^2 + im^2
+		__m128 hyp_sq = _mm_add_ps(r_sq, i_sq);
+
+		// sqrt
+		__m128 hyp = _mm_sqrt_ps(hyp_sq);
+
+		// scale = 1/denom
+		__m128 norm_r = _mm_mul_ps(_mm_div_ps(hyp, denom_v), term_r);
+		__m128 norm_i = _mm_mul_ps(_mm_div_ps(hyp, denom_v), term_i);
+
+		_mm_storeu_ps(normalized[0] + i, norm_r);
+		_mm_storeu_ps(normalized[1] + i, norm_i);
+
+		i += idx;
+	}
+
+	// Tail
+	for (; i < size; i++)
+	{
+		float hyp = sqrtf(H[0][i] * H[0][i] + H[1][i] * H[1][i]);
+		normalized[0][i] = (hyp / denom) * H[0][i];
+		normalized[1][i] = (hyp / denom) * H[1][i];
+	}
+
+	return normalized;
+}

@@ -1,4 +1,5 @@
 #include "simd_avx.h"
+#include <stdlib.h>
 
 // --- AVX family (256-bit) ---
 static void compute_s8_from_index(
@@ -96,8 +97,8 @@ __attribute__((target("avx"))) float **avx_compute_H(
 		{
 			return NULL;
 		}
-		H[0] = malloc(sizeof(float) * length);
-		H[1] = malloc(sizeof(float) * length);
+		H[0] = (float *)malloc(sizeof(float) * length);
+		H[1] = (float *)malloc(sizeof(float) * length);
 		if (!H[0] || !H[1])
 		{
 			free(H[0]);
@@ -152,15 +153,17 @@ __attribute__((target("avx"))) float **avx_compute_H(
 			term_r = res_r;
 			term_i = res_i;
 
-			// (z.m * prod + z.c), with m,c real, (2 regs, total 14)
-			__m256 m_v = _mm256_set1_ps(zeros_arr.m[z_i]);
-			__m256 c_v = _mm256_set1_ps(zeros_arr.c[z_i]);
+			// (z.m * prod + z.c), with m,c complex
+			__m256 m_r = _mm256_set1_ps(zeros_arr.m_r[z_i]);
+			__m256 m_i = _mm256_set1_ps(zeros_arr.m_i[z_i]);
+			__m256 c_r = _mm256_set1_ps(zeros_arr.c_r[z_i]);
+			__m256 c_i = _mm256_set1_ps(zeros_arr.c_i[z_i]);
 
-			term_r = _mm256_mul_ps(m_v, term_r);
-			term_i = _mm256_mul_ps(m_v, term_i);
+			__m256 tm_r, tm_i;
+			avx_complex_mul(m_r, m_i, term_r, term_i, &tm_r, &tm_i);
 
-			term_r = _mm256_add_ps(term_r, c_v);
-			term_i = term_i; // TODO: add c to imaginary part?
+			term_r = _mm256_add_ps(tm_r, c_r);
+			term_i = _mm256_add_ps(tm_i, c_i);
 
 			// num *= (that), applied per lane (2 regs, total 16)
 			avx_complex_mul(num_r, num_i, term_r, term_i, &num_r, &num_i);
@@ -197,15 +200,17 @@ __attribute__((target("avx"))) float **avx_compute_H(
 			term_r = res_r;
 			term_i = res_i;
 
-			// (p.m * prod + p.c), with m,c real, (2 regs, total 14)
-			__m256 m_v = _mm256_set1_ps(poles_arr.m[p_i]);
-			__m256 c_v = _mm256_set1_ps(poles_arr.c[p_i]);
+			// (p.m * prod + p.c), with m,c complex
+			__m256 m_r = _mm256_set1_ps(poles_arr.m_r[p_i]);
+			__m256 m_i = _mm256_set1_ps(poles_arr.m_i[p_i]);
+			__m256 c_r = _mm256_set1_ps(poles_arr.c_r[p_i]);
+			__m256 c_i = _mm256_set1_ps(poles_arr.c_i[p_i]);
 
-			term_r = _mm256_mul_ps(m_v, term_r);
-			term_i = _mm256_mul_ps(m_v, term_i);
+			__m256 tm_r, tm_i;
+			avx_complex_mul(m_r, m_i, term_r, term_i, &tm_r, &tm_i);
 
-			term_r = _mm256_add_ps(term_r, c_v);
-			term_i = term_i; // TODO: add c to imaginary part?
+			term_r = _mm256_add_ps(tm_r, c_r);
+			term_i = _mm256_add_ps(tm_i, c_i);
 
 			// den *= (that), applied per lane (2 regs, total 16)
 			avx_complex_mul(den_r, den_i, term_r, term_i, &den_r, &den_i);
@@ -215,7 +220,7 @@ __attribute__((target("avx"))) float **avx_compute_H(
 		__m256 Hr, Hi;
 		avx_complex_div(num_r, num_i, den_r, den_i, &Hr, &Hi);
 
-		if (h_i + 4 > length)
+		if (h_i + 8 > length)
 		{
 			avx_store_n_floats(H[0] + h_i, Hr, length - h_i);
 			avx_store_n_floats(H[1] + h_i, Hi, length - h_i);
