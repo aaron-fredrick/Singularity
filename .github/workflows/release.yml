@@ -1,0 +1,91 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libsdl2-dev build-essential
+        
+    - name: Compile
+      run: make clean && make
+      
+    - name: Package
+      run: |
+        mkdir -p singularity-linux
+        cp bin/singularity singularity-linux/
+        tar -czvf singularity-linux.tar.gz singularity-linux/
+        
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: linux-artifact
+        path: singularity-linux.tar.gz
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up MSYS2
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        install: >-
+          mingw-w64-x86_64-gcc
+          mingw-w64-x86_64-SDL2
+          make
+          
+    - name: Compile & Bundle
+      shell: msys2 {0}
+      run: make clean && make bundle-sdl2
+      
+    - name: Package
+      shell: bash
+      run: |
+        mkdir -p singularity-windows
+        cp bin/singularity.exe singularity-windows/
+        cp bin/SDL2.dll singularity-windows/
+        7z a singularity-windows.zip singularity-windows/
+        
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: windows-artifact
+        path: singularity-windows.zip
+
+  create-release:
+    needs: [build-linux, build-windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - name: Download Linux Artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: linux-artifact
+        
+    - name: Download Windows Artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: windows-artifact
+        
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          singularity-linux.tar.gz
+          singularity-windows.zip
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

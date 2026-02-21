@@ -1,1 +1,7 @@
 .vscode/
+bin/
+build/
+output.txt
+*.txt
+*.bmp
+*.log
