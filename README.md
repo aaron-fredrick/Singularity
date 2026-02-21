@@ -1,12 +1,14 @@
 # Singularity
 
-Singularity is a high-performance mathematical visualizer and experimental music instrument that translates complex-plane functions into a symphony of color and sound.
+Singularity is a high-performance **S-plane visualizer** and experimental music instrument that translates complex transfer functions, formed by the interaction of **poles and zeros**, into a symphony of color and sound.
 
 ## Purpose & Inspiration
 
-This project is deeply influenced by the work and spirit of the late developer **Terry Davis**, whose dedication to building from first principles and creating unique, personal digital spaces left a lasting impression on the coding community.
+This project is a tribute to the logical elegance of **Laplace Transformations** and control theory. It provides a real-time, interactive window into the **S-Domain**, where the stability and behavior of linear systems are dictated by the landscape of singularities.
 
-Singularity was born out of a personal fascination with the hidden beauty of mathematical expressions. It aims to transcend the dry notation of equations, allowing users to **see the colors of math** and explore the infinite intricacy of poles and zeros in real-time. By mapping mathematical magnitude and phase to vibrant visual gradients and synthetic soundscapes, we turn the screen into a window into the logical sublime.
+Influenced by the work and spirit of the late developer **Terry Davis**, Singularity was built with a dedication to first-principles development and the creation of unique, personal digital artifacts. 
+
+The goal is to move beyond the textbook definitions of transfer functions. It allows users to **see the colors of math** and explore the infinite intricacy of the complex plane. By mapping mathematical magnitude and phase to vibrant visual gradients and synthetic soundscapes, we turn the screen into an auditory and visual representation of the **Laplace landscape**.
 
 ## Features
 
